@@ -62,6 +62,9 @@ export const auditFindings = mysqlTable("audit_findings", {
   recommendation: text("recommendation").notNull(),
   estimatedImpact: text("estimatedImpact"),
   sourceUrls: text("sourceUrls"),
+  profileAnalysis: text("profileAnalysis"),
+  missingInfo: text("missingInfo"),
+  profileAnalyzedAt: timestamp("profileAnalyzedAt"),
   verifiedAt: timestamp("verifiedAt").defaultNow().notNull(),
 });
 

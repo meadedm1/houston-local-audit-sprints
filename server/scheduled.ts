@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { sdk } from "./_core/sdk";
 import * as db from "./db";
+import { analyzeGoogleProfileForLead } from "./profileAnalysis";
 
 export const leadSchema = z.object({
   businessName: z.string().min(1).max(200),
@@ -39,7 +40,10 @@ export async function ingestAuditBatch(req: Request, res: Response) {
     const parsed = batchSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "invalid-payload", issues: parsed.error.issues });
     const result = await db.ingestBatch(settings.ownerId, { ...parsed.data, source: "scheduled" });
-    res.json({ ok: true, ...result });
+    const analysisResults = await Promise.allSettled(result.leadIds.map(leadId => analyzeGoogleProfileForLead(settings.ownerId, leadId)));
+    const analyzed = analysisResults.filter(item => item.status === "fulfilled").length;
+    const analysisFailures = analysisResults.filter(item => item.status === "rejected").map(item => item.reason instanceof Error ? item.reason.message : String(item.reason));
+    res.json({ ok: true, ...result, analyzed, analysisFailures });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[Scheduled audit] failed", error);

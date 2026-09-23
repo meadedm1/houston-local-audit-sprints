@@ -111,6 +111,19 @@ export async function updateDraftStatus(ownerId: number, leadId: number, status:
   return getLeadDetail(ownerId, leadId);
 }
 
+export async function saveProfileAnalysis(ownerId: number, leadId: number, analysis: { summary: string; missingInfo: string[]; priority: "high" | "medium" | "low"; recommendedFix: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const lead = (await db.select({ id: businessLeads.id }).from(businessLeads).where(and(eq(businessLeads.ownerId, ownerId), eq(businessLeads.id, leadId))).limit(1))[0];
+  if (!lead) throw new Error("Lead not found");
+  await db.update(auditFindings).set({
+    profileAnalysis: JSON.stringify({ summary: analysis.summary, priority: analysis.priority, recommendedFix: analysis.recommendedFix }),
+    missingInfo: JSON.stringify(analysis.missingInfo),
+    profileAnalyzedAt: new Date(),
+  }).where(eq(auditFindings.leadId, leadId));
+  return getLeadDetail(ownerId, leadId);
+}
+
 export async function updateSettings(ownerId: number, input: { region: string; niche: string; batchSize: number; cadence: string; priceLow: number; priceHigh: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
@@ -145,12 +158,14 @@ export async function ingestBatch(ownerId: number, input: { region: string; nich
   const now = new Date();
   const batchInsert = await db.insert(auditBatches).values({ ownerId, region: input.region, niche: input.niche, source: input.source, status: "ready", completedAt: now });
   const batchId = Number(batchInsert[0].insertId);
+  const leadIds: number[] = [];
   for (const item of input.leads.slice(0, 25)) {
     const leadInsert = await db.insert(businessLeads).values({
       ownerId, batchId, businessName: item.businessName, category: item.category ?? null, city: item.city ?? "Houston",
       websiteUrl: item.websiteUrl ?? null, gbpUrl: item.gbpUrl ?? null, contactUrl: item.contactUrl ?? null, status: "new",
     });
     const leadId = Number(leadInsert[0].insertId);
+    leadIds.push(leadId);
     await db.insert(auditFindings).values({
       leadId, issueType: item.issueType, severity: item.severity, headline: item.headline, evidence: item.evidence,
       recommendation: item.recommendation, estimatedImpact: item.estimatedImpact ?? null,
@@ -161,5 +176,5 @@ export async function ingestBatch(ownerId: number, input: { region: string; nich
       paymentCta: item.paymentCta, status: "draft",
     });
   }
-  return { batchId, count: Math.min(input.leads.length, 25) };
+  return { batchId, count: leadIds.length, leadIds };
 }

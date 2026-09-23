@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { z } from "zod";
+import { analyzeGoogleProfileForLead } from "./profileAnalysis";
 
 const settingsInput = z.object({
   region: z.string().min(2).max(160),
@@ -50,7 +51,12 @@ export const appRouter = router({
     leads: protectedProcedure.input(z.object({ batchId: z.number().int().positive().optional() }).optional()).query(({ ctx, input }) => db.listLeads(ctx.user.id, input?.batchId)),
     leadDetail: protectedProcedure.input(z.object({ leadId: z.number().int().positive() })).query(({ ctx, input }) => db.getLeadDetail(ctx.user.id, input.leadId)),
     setDraftStatus: protectedProcedure.input(z.object({ leadId: z.number().int().positive(), status: z.enum(["draft", "approved", "rejected"]) })).mutation(({ ctx, input }) => db.updateDraftStatus(ctx.user.id, input.leadId, input.status)),
-    ingestManualBatch: protectedProcedure.input(z.object({ region: z.string(), niche: z.string(), leads: z.array(leadInput).min(1).max(25) })).mutation(({ ctx, input }) => db.ingestBatch(ctx.user.id, { ...input, source: "manual" })),
+    analyzeGoogleProfile: protectedProcedure.input(z.object({ leadId: z.number().int().positive() })).mutation(({ ctx, input }) => analyzeGoogleProfileForLead(ctx.user.id, input.leadId)),
+    ingestManualBatch: protectedProcedure.input(z.object({ region: z.string(), niche: z.string(), leads: z.array(leadInput).min(1).max(25) })).mutation(async ({ ctx, input }) => {
+      const result = await db.ingestBatch(ctx.user.id, { ...input, source: "manual" });
+      const analysisResults = await Promise.allSettled(result.leadIds.map(leadId => analyzeGoogleProfileForLead(ctx.user.id, leadId)));
+      return { ...result, analyzed: analysisResults.filter(item => item.status === "fulfilled").length };
+    }),
   }),
 });
 

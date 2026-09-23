@@ -15,6 +15,13 @@
       "when": 1790181990888,
       "tag": "0001_complex_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790182815003,
+      "tag": "0002_black_namora",
+      "breakpoints": true
     }
   ]
 }
